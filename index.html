@@ -2,6 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://bsxlhszipbrlisiyuwxh.supabase.co; base-uri 'none'; form-action 'self'; object-src 'none'">
 <title>Perfect Art</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,6 +37,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; scroll-padding-top: 80px; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
@@ -270,7 +272,7 @@ footer a:hover { color: var(--fg); }
       <aside class="pass" aria-label="Next event">
         <div class="pass-head">
           <span class="label">Next night</span>
-          <span class="tag">Club</span>
+          <span class="tag" id="nextKind">Club</span>
         </div>
         <div>
           <h3 id="nextName">Opening Night</h3>
@@ -296,12 +298,12 @@ footer a:hover { color: var(--fg); }
           <span class="label">Tickets</span>
           <h2>Pick your entry</h2>
         </div>
-        <p class="sub">Two ticket types for every night. Ticket links go live once the ticketing provider is connected.</p>
+        <p class="sub">Pick your ticket and pay on a secure checkout page. Your QR tickets appear straight after.</p>
       </div>
 
       <div class="tickets">
-        <!-- Ticket placeholder 1: replace name, price, perks and data-checkout-url -->
-        <article class="ticket" data-ticket="1" data-price="0" data-checkout-url="">
+        <!-- Ticket 1: name, price and perks are filled in from the events API (first ticket type). -->
+        <article class="ticket" data-ticket="1">
           <span class="placeholder-badge">Placeholder</span>
           <div class="ticket-top">
             <div>
@@ -326,8 +328,8 @@ footer a:hover { color: var(--fg); }
           </div>
         </article>
 
-        <!-- Ticket placeholder 2: replace name, price, perks and data-checkout-url -->
-        <article class="ticket" data-ticket="2" data-price="0" data-checkout-url="">
+        <!-- Ticket 2: filled in from the events API (second ticket type). -->
+        <article class="ticket" data-ticket="2">
           <span class="placeholder-badge">Placeholder</span>
           <div class="ticket-top">
             <div>
@@ -431,86 +433,6 @@ footer a:hover { color: var(--fg); }
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script>
-(() => {
-  const $ = (s, el = document) => el.querySelector(s);
-  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-
-  // Toast
-  const toast = $("#toast"); let tt;
-  const say = msg => { toast.textContent = msg; toast.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove("show"), 2600); };
-
-  // Mobile menu
-  const nav = $("#nav"), menuBtn = $("#menuBtn");
-  menuBtn.addEventListener("click", () => {
-    const open = nav.classList.toggle("open");
-    menuBtn.setAttribute("aria-expanded", open);
-    menuBtn.textContent = open ? "Close" : "Menu";
-  });
-  $$("#menu a").forEach(a => a.addEventListener("click", () => {
-    nav.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false"); menuBtn.textContent = "Menu";
-  }));
-
-  // Active section in nav
-  const links = $$("#menu a");
-  const io = new IntersectionObserver(entries => {
-    entries.forEach(e => {
-      if (!e.isIntersecting) return;
-      links.forEach(l => l.classList.toggle("active", l.getAttribute("href") === "#" + e.target.id));
-    });
-  }, { rootMargin: "-45% 0px -50% 0px" });
-  ["tickets", "formats", "info"].forEach(id => io.observe(document.getElementById(id)));
-
-  // Hide mobile ticket bar while the tickets section is on screen
-  const bar = $("#mobileBar");
-  new IntersectionObserver(([e]) => bar.classList.toggle("hide", e.isIntersecting), { threshold: 0.15 })
-    .observe($("#tickets"));
-
-  // Countdown to next night (sample date: Sat 17 Oct, doors 22:00 local time)
-  const year = new Date().getFullYear();
-  let target = new Date(year, 9, 17, 22, 0, 0);
-  if (target < new Date()) target = new Date(year + 1, 9, 17, 22, 0, 0);
-  const cells = Object.fromEntries($$("#countdown b").map(b => [b.dataset.u, b]));
-  const pad = n => String(n).padStart(2, "0");
-  const tick = () => {
-    let s = Math.max(0, Math.floor((target - Date.now()) / 1000));
-    const d = Math.floor(s / 86400); s %= 86400;
-    const h = Math.floor(s / 3600); s %= 3600;
-    const m = Math.floor(s / 60); s %= 60;
-    cells.d.textContent = pad(d); cells.h.textContent = pad(h); cells.m.textContent = pad(m); cells.s.textContent = pad(s);
-  };
-  tick(); setInterval(tick, 1000);
-
-  // Ticket quantity steppers + reserve buttons
-  $$(".ticket").forEach(t => {
-    const out = $("output", t), [minus, plus] = $$(".stepper button", t);
-    let qty = 1; const MAX = 10;
-    const render = () => { out.textContent = qty; minus.disabled = qty <= 1; plus.disabled = qty >= MAX; };
-    $$(".stepper button", t).forEach(b => b.addEventListener("click", () => {
-      qty = Math.min(MAX, Math.max(1, qty + Number(b.dataset.step))); render();
-    }));
-    render();
-    $(".reserve", t).addEventListener("click", () => {
-      const url = t.dataset.checkoutUrl;
-      const name = $("h3", t).textContent.replace(/\s+/g, " ").trim();
-      if (url) { location.href = url + (url.includes("?") ? "&" : "?") + "qty=" + qty; return; }
-      say(`${qty} × ${name}: ticket sales open soon`);
-    });
-  });
-
-  // Mailing list
-  $("#signup").addEventListener("submit", e => {
-    e.preventDefault();
-    const input = $("#email"), msg = $("#formMsg");
-    if (!input.checkValidity() || !input.value.trim()) {
-      msg.textContent = "Enter a valid email address, like name@example.com.";
-      input.focus(); return;
-    }
-    msg.textContent = "You're on the list. We'll email you before tickets go on sale.";
-    input.value = "";
-  });
-
-  $("#yr").textContent = year;
-})();
-</script>
+<script src="config.js"></script>
+<script src="app.js"></script>
 </html>
