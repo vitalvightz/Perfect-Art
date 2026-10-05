@@ -2,8 +2,18 @@
   const $ = s => document.querySelector(s);
   const API = window.PA_CONFIG?.apiBase;
   const TZ = "Europe/London";
-  // The private link is "tickets.html#<order id>.<secret>". The fragment never reaches any server.
-  const ref = decodeURIComponent(location.hash.slice(1));
+  const REF_RE = /^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/i;
+  // Where the private ticket link comes from:
+  //  * the emailed link: tickets.html#<order id>.<secret> (the fragment never reaches any server)
+  //  * straight after payment: tickets.html?order=<order id>, with the secret saved in this browser
+  //    at checkout. The payment provider only ever sees the order id.
+  let ref = decodeURIComponent(location.hash.slice(1));
+  const returningOrder = new URLSearchParams(location.search).get("order");
+  if (!REF_RE.test(ref) && returningOrder) {
+    try { ref = localStorage.getItem(`pa-ticket:${returningOrder}`) || ""; } catch { ref = ""; }
+    // Keep the full link in the address bar so this page can be bookmarked.
+    if (REF_RE.test(ref)) history.replaceState(null, "", `${location.pathname}#${ref}`);
+  }
 
   const statusEl = $("#status");
   function setStatus(title, detail, busy = false) {
@@ -70,6 +80,7 @@
         statusEl.hidden = true;
         renderTickets(order);
         $("#tip").hidden = false;
+        if (order.email) $("#tip").textContent += ` We've also emailed these tickets to ${order.email}.`;
         return true;
       case "pending":
         setStatus("Confirming your payment…", "This usually takes a few seconds. Keep this page open.", true);
@@ -110,9 +121,40 @@
     }
   }
 
-  if (!API || !/^[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$/i.test(ref)) {
-    setStatus("This ticket link isn't complete.", "Open the full link from your payment confirmation.");
-  } else {
+  // "Find my tickets": re-send the tickets email.
+  $("#findForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const input = $("#findEmail"), msg = $("#findMsg"), btn = $("#findBtn");
+    if (!input.checkValidity() || !input.value.trim()) {
+      msg.textContent = "Enter a valid email address, like name@example.com.";
+      input.focus(); return;
+    }
+    btn.disabled = true; msg.textContent = "Sending…";
+    try {
+      const res = await fetch(`${API}/resend-tickets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: input.value.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      msg.textContent = data.message || (res.ok ? "Check your inbox." : "Couldn't send. Try again in a few minutes.");
+    } catch {
+      msg.textContent = "Couldn't reach the ticket service. Check your connection and try again.";
+    }
+    btn.disabled = false;
+  });
+
+  if (API && REF_RE.test(ref)) {
     load();
+  } else if (returningOrder) {
+    // Back from payment on a different browser, or storage was blocked.
+    setStatus("Thanks for your order.", "Your tickets are being emailed to the address you paid with. They usually arrive within a few minutes.");
+    $("#find").hidden = false;
+  } else if (ref) {
+    setStatus("This ticket link isn't complete.", "Open the full link from your tickets email, or have the tickets sent again below.");
+    $("#find").hidden = false;
+  } else {
+    statusEl.hidden = true;
+    $("#find").hidden = false;
   }
 })();

@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://bsxlhszipbrlisiyuwxh.supabase.co; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://bsxlhszipbrlisiyuwxh.supabase.co; base-uri 'none'; form-action 'self'; object-src 'none'">
 <!-- This page's URL carries the buyer's private ticket link. Never send it anywhere. -->
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
@@ -42,9 +42,27 @@ h1 { font: 800 clamp(2rem, 8vw, 3rem)/1 var(--display); letter-spacing: -0.02em;
 .qr img { width: min(260px, 100%); height: auto; image-rendering: pixelated; }
 .used { padding: 2rem 1.25rem; text-align: center; color: var(--muted); }
 .tip { font-size: 0.9rem; color: var(--muted); }
+.find { display: grid; gap: 0.75rem; }
+.find h2 { font: 800 1.5rem/1.1 var(--display); margin: 0; }
+.find p { margin: 0; color: var(--muted); }
+.find form { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.find input { flex: 1 1 220px; min-width: 0; min-height: 50px; padding: 0 1.1rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--fg); font: 400 1rem var(--body); }
+.find input:focus { border-color: var(--fg); outline: none; }
+.find button { min-height: 50px; padding: 0 1.4rem; border-radius: 999px; border: 0; background: var(--fg); color: var(--bg); font: 600 0.95rem var(--body); cursor: pointer; }
+.find button:disabled { opacity: 0.5; cursor: wait; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
 .spinner { display: inline-block; width: 0.9em; height: 0.9em; border: 2px solid var(--line); border-top-color: var(--fg); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -0.1em; margin-right: 0.4em; }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .find { display: grid; gap: 0.75rem; }
+.find h2 { font: 800 1.5rem/1.1 var(--display); margin: 0; }
+.find p { margin: 0; color: var(--muted); }
+.find form { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.find input { flex: 1 1 220px; min-width: 0; min-height: 50px; padding: 0 1.1rem; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--fg); font: 400 1rem var(--body); }
+.find input:focus { border-color: var(--fg); outline: none; }
+.find button { min-height: 50px; padding: 0 1.4rem; border-radius: 999px; border: 0; background: var(--fg); color: var(--bg); font: 600 0.95rem var(--body); cursor: pointer; }
+.find button:disabled { opacity: 0.5; cursor: wait; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+.spinner { animation: none; } }
 </style>
 
 <main>
@@ -61,6 +79,17 @@ h1 { font: 800 clamp(2rem, 8vw, 3rem)/1 var(--display); letter-spacing: -0.02em;
   </div>
 
   <section class="tickets" id="tickets" aria-label="Your tickets"></section>
+
+  <section class="find" id="find" hidden aria-labelledby="findTitle">
+    <h2 id="findTitle">Find my tickets</h2>
+    <p>Enter the email you used when you paid and we'll send your tickets again.</p>
+    <form id="findForm" novalidate>
+      <label class="label" for="findEmail" style="flex-basis:100%">Email address</label>
+      <input id="findEmail" type="email" autocomplete="email" placeholder="you@email.com" required>
+      <button type="submit" id="findBtn">Email my tickets</button>
+    </form>
+    <p id="findMsg" role="status"></p>
+  </section>
 
   <p class="tip" id="tip" hidden>Keep this page: bookmark it or save the link. It's your way back to these tickets. Show the QR code at the door with photo ID. Each code works once.</p>
 </main>

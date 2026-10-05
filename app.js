@@ -76,6 +76,10 @@
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && typeof data.redirect_url === "string" && data.redirect_url.startsWith("https://")) {
+        // Keep the private ticket link in this browser so tickets.html can show the tickets as soon
+        // as the buyer returns. The payment provider never sees it; it's also emailed after payment.
+        const orderId = String(data.ticket_ref || "").split(".")[0];
+        try { if (orderId) localStorage.setItem(`pa-ticket:${orderId}`, data.ticket_ref); } catch { /* storage blocked */ }
         location.assign(data.redirect_url);
         return;
       }

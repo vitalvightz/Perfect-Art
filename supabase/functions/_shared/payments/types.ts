@@ -11,7 +11,8 @@ export interface CheckoutRequest {
   unitPricePence: number;
   /** What the buyer sees on the payment page, e.g. "Opening Night: VIP Entry". */
   description: string;
-  /** Where the provider sends the buyer after paying. Contains the buyer's private ticket link. */
+  /** Where the provider sends the buyer after paying. Carries only the order id: the ticket link
+   * secret must never be sent to the provider. */
   successUrl: string;
   /** Where the provider sends the buyer if they back out. */
   cancelUrl: string;

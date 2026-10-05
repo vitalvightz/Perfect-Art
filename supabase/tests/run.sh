@@ -8,5 +8,6 @@ $P -c 'drop database if exists pa_test' -c 'create database pa_test' >/dev/null 
 $P -d pa_test -f local_stub.sql \
   -f ../migrations/20261005122332_ticketing_core.sql \
   -f ../migrations/20261005122415_ticketing_fk_indexes.sql \
-  -f ticketing_test.sql 2>&1 | sed -n 's/.*NOTICE:  //p; /ALL TESTS PASSED/p'
+  -f ../migrations/20261005124811_ticket_emails.sql -f ../migrations/20261005124923_retire_old_reserve_tickets.sql -f ../migrations/20261005125548_normalise_order_email.sql \
+  -f ticketing_test.sql 2>&1 | sed -n 's/.*NOTICE:  //p; /ALL TESTS PASSED/p; /ERROR/p'
 ./race_test.sh 2>&1 | grep -v NOTICE

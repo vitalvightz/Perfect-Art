@@ -3,7 +3,7 @@
 // provider's hosted checkout URL. The client never sends a price.
 
 import { clientIp, error, guard, json, readJson, requireEnv, UUID_RE } from "../_shared/http.ts";
-import { clientKey, randomToken, sha256Hex } from "../_shared/crypto.ts";
+import { clientKey, orderLinkToken, sha256Hex } from "../_shared/crypto.ts";
 import { allow, rpc, RpcError } from "../_shared/db.ts";
 import { activeProvider } from "../_shared/payments/registry.ts";
 
@@ -54,12 +54,16 @@ Deno.serve(async (req) => {
     }
     const siteUrl = requireEnv("SITE_URL").replace(/\/+$/, "");
 
-    // The buyer's private ticket link secret. Only its hash is stored.
-    const accessToken = randomToken();
+    // The buyer's private ticket link secret, derived from the order id. Only its hash is stored,
+    // and it is never sent to the payment provider: the browser gets it in this response, and the
+    // ticket email carries it.
+    const orderId = crypto.randomUUID();
+    const accessToken = await orderLinkToken(orderId);
 
     let order: Reservation;
     try {
       order = await rpc<Reservation>("reserve_tickets", {
+        p_order_id: orderId,
         p_ticket_type_id: ticketTypeId,
         p_quantity: quantity,
         p_access_token_hash: await sha256Hex(accessToken),
@@ -83,8 +87,8 @@ Deno.serve(async (req) => {
         quantity: order.quantity,
         unitPricePence: order.unit_price_pence,
         description: `${order.event_name}: ${order.ticket_name}`,
-        // The link secret goes in the URL fragment, which browsers never send to servers.
-        successUrl: `${siteUrl}/tickets.html#${order.order_id}.${accessToken}`,
+        // Only the order id, which unlocks nothing on its own. The provider never sees the secret.
+        successUrl: `${siteUrl}/tickets.html?order=${order.order_id}`,
         cancelUrl: `${siteUrl}/#tickets`,
         expiresAt: new Date(Date.now() + CHECKOUT_MINUTES * 60_000),
       });
@@ -100,7 +104,8 @@ Deno.serve(async (req) => {
       p_checkout_id: session.checkoutId,
     });
 
-    return json(req, { redirect_url: session.redirectUrl });
+    // The page keeps ticket_ref in this browser so it can show the tickets straight after payment.
+    return json(req, { redirect_url: session.redirectUrl, ticket_ref: `${order.order_id}.${accessToken}` });
   } catch (e) {
     console.error("checkout failed", e instanceof Error ? e.message : e);
     return error(req, 500, "server_error", "Something went wrong. Your card has not been charged. Try again.");

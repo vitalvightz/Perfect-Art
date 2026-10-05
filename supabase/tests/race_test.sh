@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 P="${PSQL:?set PSQL} -X -q -t -A -v ON_ERROR_STOP=1"
 $P -c 'drop database if exists race' -c 'create database race'
 R="$P -d race"
-$R -f local_stub.sql -f ../migrations/20261005122332_ticketing_core.sql -f ../migrations/20261005122415_ticketing_fk_indexes.sql >/dev/null
+$R -f local_stub.sql -f ../migrations/20261005122332_ticketing_core.sql -f ../migrations/20261005122415_ticketing_fk_indexes.sql -f ../migrations/20261005124811_ticket_emails.sql -f ../migrations/20261005124923_retire_old_reserve_tickets.sql -f ../migrations/20261005125548_normalise_order_email.sql >/dev/null
 $R <<'SQL'
 insert into auth.users (id) values ('00000000-0000-0000-0000-00000000000a');
 insert into public.staff (user_id) values ('00000000-0000-0000-0000-00000000000a');
@@ -19,7 +19,7 @@ SQL
 TT=20000000-0000-0000-0000-000000000001
 reserve() { # $1 = hash digit, $2 = seconds to hold the transaction open
   $R -c "begin; set role service_role;
-         select coalesce((select 'reserved' from (select public.reserve_tickets('$TT', 1, repeat('$1', 64), null)) x), 'reserved');
+         select coalesce((select 'reserved' from (select public.reserve_tickets(gen_random_uuid(), '$TT', 1, repeat('$1', 64), null)) x), 'reserved');
          select pg_sleep($2); commit;" 2>&1 | grep -v "^$" | head -1 || true
 }
 reserve 1 2 > a.out & sleep 0.5; reserve 2 0 > b.out; wait

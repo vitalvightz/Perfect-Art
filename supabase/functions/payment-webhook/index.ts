@@ -5,6 +5,7 @@
 
 import { providerByName } from "../_shared/payments/registry.ts";
 import { rpc } from "../_shared/db.ts";
+import { processOutbox } from "../_shared/mailer.ts";
 
 const NEEDS_ATTENTION = new Set([
   "amount_mismatch",
@@ -72,6 +73,10 @@ Deno.serve(async (req) => {
         return reply(200, { received: true });
     }
 
+    if (result.outcome === "fulfilled" || result.outcome === "fulfilled_late") {
+      // Send the tickets email now. If this fails, the queued email is retried by send-emails.
+      await processOutbox(5).catch((e) => console.error("immediate email send failed", e instanceof Error ? e.message : e));
+    }
     if (result.outcome && NEEDS_ATTENTION.has(result.outcome)) {
       console.warn("payment needs attention", { provider: provider.name, outcome: result.outcome, order: result.order_id });
     }

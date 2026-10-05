@@ -70,6 +70,15 @@ export async function verifyTicket(code: string): Promise<string | null> {
   return ok ? m[1] : null;
 }
 
+/**
+ * The secret in a buyer's private ticket link (tickets.html#<order id>.<token>). Derived from the
+ * order id, so it never has to be stored or passed through the payment provider, and the ticket
+ * email can include it at any time. The database stores only its SHA-256.
+ */
+export async function orderLinkToken(orderId: string): Promise<string> {
+  return b64url(await hmac("order-link", orderId));
+}
+
 /** Keyed hash of the client IP, so raw IPs are never stored. */
 export async function clientKey(ip: string): Promise<string> {
   return b64url(await hmac("ip", ip)).slice(0, 22);

@@ -47,9 +47,12 @@ select pg_temp.ok(pg_temp.err('select * from public.tickets') like 'permission d
 select pg_temp.ok(pg_temp.err('select * from public.payment_events') like 'permission denied%', 'anon cannot read payment events');
 select pg_temp.ok(pg_temp.err($$update public.events set name = 'x'$$) like 'permission denied%', 'anon cannot edit events');
 select pg_temp.ok(pg_temp.err($$insert into public.tickets (order_id, event_id, ticket_type_id) values (gen_random_uuid(), gen_random_uuid(), gen_random_uuid())$$) like 'permission denied%', 'anon cannot create tickets');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000001', 1, repeat('a', 64), null)$$) like 'permission denied%', 'anon cannot reserve directly');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, repeat('a', 64), null)$$) like 'permission denied%', 'anon cannot reserve directly');
 select pg_temp.ok(pg_temp.err($$select public.confirm_payment('x','e','t',gen_random_uuid(),'p',1,'gbp','a@b.c')$$) like 'permission denied%', 'anon cannot confirm payments');
 select pg_temp.ok(pg_temp.err($$select public.check_in_ticket(gen_random_uuid(), gen_random_uuid(), gen_random_uuid())$$) like 'permission denied%', 'anon cannot check in');
+select pg_temp.ok(pg_temp.err('select * from public.email_outbox') like 'permission denied%', 'anon cannot read the email queue');
+select pg_temp.ok(pg_temp.err('select public.claim_emails(10)') like 'permission denied%', 'anon cannot claim emails');
+select pg_temp.ok(pg_temp.err($$select public.request_ticket_resend('a@b.c')$$) like 'permission denied%', 'anon cannot queue re-sends directly');
 reset role;
 
 set role authenticated;
@@ -65,17 +68,17 @@ reset role;
 -- ---------------------------------------------------------------- reserving (service role)
 set role service_role;
 
-select (public.reserve_tickets('20000000-0000-0000-0000-000000000001', 3, repeat('1', 64), 'ip1'))->>'order_id' as o1 \gset
+select (public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 3, repeat('1', 64), 'ip1'))->>'order_id' as o1 \gset
 select pg_temp.ok((select amount_pence from public.orders where id = :'o1') = 4500, 'price comes from the database: 3 x 1500 = 4500');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000001', 1, 'not-a-hash', null)$$) like '%violates check constraint%', 'access token hash must be a sha256 hex');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000001', 2, repeat('2', 64), null)$$) = 'sold_out', 'ticket type allocation is enforced');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000002', 3, repeat('2', 64), null)$$) = 'sold_out', 'event capacity is enforced across ticket types');
-select (public.reserve_tickets('20000000-0000-0000-0000-000000000002', 2, repeat('2', 64), 'ip2'))->>'order_id' as o2 \gset
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000002', 1, repeat('3', 64), null)$$) = 'sold_out', 'event is now full');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000002', 0, repeat('3', 64), null)$$) = 'invalid_quantity', 'quantity 0 rejected');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000002', 5, repeat('3', 64), null)$$) = 'invalid_quantity', 'quantity above max per order rejected');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000003', 1, repeat('3', 64), null)$$) = 'not_on_sale', 'draft event cannot be bought');
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), 1, repeat('3', 64), null)$$) = 'not_on_sale', 'unknown ticket type rejected');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'not-a-hash', null)$$) like '%violates check constraint%', 'access token hash must be a sha256 hex');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, repeat('2', 64), null)$$) = 'sold_out', 'ticket type allocation is enforced');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 3, repeat('2', 64), null)$$) = 'sold_out', 'event capacity is enforced across ticket types');
+select (public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 2, repeat('2', 64), 'ip2'))->>'order_id' as o2 \gset
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 1, repeat('3', 64), null)$$) = 'sold_out', 'event is now full');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 0, repeat('3', 64), null)$$) = 'invalid_quantity', 'quantity 0 rejected');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 5, repeat('3', 64), null)$$) = 'invalid_quantity', 'quantity above max per order rejected');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000003', 1, repeat('3', 64), null)$$) = 'not_on_sale', 'draft event cannot be bought');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), gen_random_uuid(), 1, repeat('3', 64), null)$$) = 'not_on_sale', 'unknown ticket type rejected');
 
 select pg_temp.ok(
   (select bool_and(t->>'sale_state' = 'sold_out') from jsonb_array_elements(public.public_event_listing()->0->'ticket_types') t),
@@ -86,9 +89,9 @@ select pg_temp.ok(jsonb_array_length(public.public_event_listing()) = 1, 'listin
 select pg_temp.ok(public.attach_checkout(:'o1', 'testpay', 'chk_1'), 'checkout attached to pending order');
 select pg_temp.ok(not public.attach_checkout(:'o1', 'testpay', 'chk_other'), 'checkout cannot be re-attached');
 
-select pg_temp.ok((public.confirm_payment('testpay', 'evt_1', 'paid', :'o1', 'pay_1', 4500, 'GBP', 'Buyer@Example.com'))->>'outcome' = 'fulfilled', 'payment confirmed and fulfilled');
+select pg_temp.ok((public.confirm_payment('testpay', 'evt_1', 'paid', :'o1', 'pay_1', 4500, 'GBP', '  Buyer@Example.com '))->>'outcome' = 'fulfilled', 'payment confirmed and fulfilled');
 select pg_temp.ok((select count(*) from public.tickets where order_id = :'o1') = 3, 'three tickets issued');
-select pg_temp.ok((select email from public.orders where id = :'o1') = 'buyer@example.com', 'email stored lower-case');
+select pg_temp.ok((select email from public.orders where id = :'o1') = 'buyer@example.com', 'email stored trimmed and lower-case');
 select pg_temp.ok((public.confirm_payment('testpay', 'evt_1', 'paid', :'o1', 'pay_1', 4500, 'gbp', 'buyer@example.com'))->>'outcome' = 'duplicate', 'same notification twice is ignored');
 select pg_temp.ok((public.confirm_payment('testpay', 'evt_1b', 'paid', :'o1', 'pay_1', 4500, 'gbp', 'buyer@example.com'))->>'outcome' = 'already_paid', 'same payment under a new event id is ignored');
 select pg_temp.ok((public.confirm_payment('testpay', 'evt_1c', 'paid', :'o1', 'pay_9', 4500, 'gbp', 'buyer@example.com'))->>'outcome' = 'second_payment_needs_refund', 'a second, different payment is flagged');
@@ -99,6 +102,32 @@ select pg_temp.ok((public.confirm_payment('testpay', 'evt_2', 'paid', :'o2', 'pa
 select pg_temp.ok((select status from public.orders where id = :'o2') = 'review', 'underpaid order goes to review');
 select pg_temp.ok((select count(*) from public.tickets where order_id = :'o2') = 0, 'no tickets for underpaid order');
 select pg_temp.ok((public.confirm_payment('otherpay', 'evt_x', 'paid', gen_random_uuid(), 'p', 1, 'gbp', null))->>'outcome' = 'order_not_found', 'unknown order is logged, not fulfilled');
+
+-- ---------------------------------------------------------------- ticket emails
+select pg_temp.ok((select count(*) from public.email_outbox where order_id = :'o1' and kind = 'tickets' and to_email = 'buyer@example.com') = 1, 'paying queues exactly one tickets email');
+select pg_temp.ok((select count(*) from public.email_outbox where order_id = :'o2') = 0, 'no email for an underpaid order');
+select pg_temp.ok((public.order_email_details(:'o1'))->>'ticket_name' = 'General Entry', 'email details come from the order');
+
+select pg_temp.ok(jsonb_array_length(public.claim_emails(10)) = 1, 'sender claims the due email');
+select pg_temp.ok(jsonb_array_length(public.claim_emails(10)) = 0, 'a claimed email is not handed out twice');
+select id as m1 from public.email_outbox where order_id = :'o1' and kind = 'tickets' \gset
+select public.mark_email_failed(:'m1', 'provider timeout');
+select pg_temp.ok((select status = 'pending' and next_attempt_at > now() from public.email_outbox where id = :'m1'), 'failed send is retried later, not immediately');
+select pg_temp.ok(jsonb_array_length(public.claim_emails(10)) = 0, 'not due again until the backoff passes');
+reset role;
+update public.email_outbox set next_attempt_at = now() - interval '1 second' where id = :'m1';
+set role service_role;
+select pg_temp.ok((public.claim_emails(10))->0->>'attempts' = '2', 'retry is claimed as attempt 2');
+select public.mark_email_sent(:'m1', 'msg_123');
+select pg_temp.ok((select status = 'sent' and provider_message_id = 'msg_123' from public.email_outbox where id = :'m1'), 'email marked sent');
+
+select pg_temp.ok(public.request_ticket_resend('  BUYER@example.com ') = 1, 'find-my-tickets queues a re-send for the paid order');
+select pg_temp.ok(public.request_ticket_resend('buyer@example.com') = 0, 're-sends are throttled to one per 10 minutes');
+select pg_temp.ok(public.request_ticket_resend('nobody@example.com') = 0, 'unknown address queues nothing');
+select id as m2 from public.email_outbox where kind = 'resend' \gset
+select pg_temp.ok(jsonb_array_length(public.claim_emails(10)) = 1, 're-send is claimed');
+select public.mark_email_failed(:'m2', 'bad address', true);
+select pg_temp.ok((select status from public.email_outbox where id = :'m2') = 'failed', 'permanent failure stops retries');
 reset role;
 
 -- ---------------------------------------------------------------- holds expiring
@@ -107,13 +136,13 @@ update public.orders set status = 'cancelled' where id = :'o2';
 update public.events set capacity = 6 where id = '10000000-0000-0000-0000-000000000001';
 
 set role service_role;
-select (public.reserve_tickets('20000000-0000-0000-0000-000000000002', 3, repeat('4', 64), null))->>'order_id' as o3 \gset
+select (public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 3, repeat('4', 64), null))->>'order_id' as o3 \gset
 select public.attach_checkout(:'o3', 'testpay', 'chk_3') \gset ignored_
-select pg_temp.ok(pg_temp.err($$select public.reserve_tickets('20000000-0000-0000-0000-000000000002', 1, repeat('5', 64), null)$$) = 'sold_out', 'held seats are not sellable');
+select pg_temp.ok(pg_temp.err($$select public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 1, repeat('5', 64), null)$$) = 'sold_out', 'held seats are not sellable');
 reset role;
 update public.orders set hold_expires_at = now() - interval '1 minute' where id = :'o3';
 set role service_role;
-select (public.reserve_tickets('20000000-0000-0000-0000-000000000002', 3, repeat('5', 64), null))->>'order_id' as o4 \gset
+select (public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000002', 3, repeat('5', 64), null))->>'order_id' as o4 \gset
 select pg_temp.ok(:'o4' is not null, 'seats from an expired hold can be sold again');
 select pg_temp.ok((public.confirm_payment('testpay', 'evt_3', 'paid', :'o3', 'pay_3', 9000, 'gbp', 'late@example.com'))->>'outcome' = 'no_capacity_needs_refund', 'late payment that would oversell is flagged, not fulfilled');
 select pg_temp.ok((select count(*) from public.tickets where order_id = :'o3') = 0, 'no tickets oversold');
