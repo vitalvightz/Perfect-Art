@@ -5,7 +5,7 @@
 
 import { clientIp, error, guard, json, readJson } from "../_shared/http.ts";
 import { clientKey } from "../_shared/crypto.ts";
-import { allow, rpc } from "../_shared/db.ts";
+import { allow, allowClient, rpc } from "../_shared/db.ts";
 import { processOutbox } from "../_shared/mailer.ts";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const ipOk = await allow(`resend:ip:${await clientKey(clientIp(req))}`, 600, 5);
+    const ipOk = await allowClient("resend", await clientKey(clientIp(req)), [600, 5], [600, 200]);
     const emailOk = await allow(`resend:email:${await clientKey(email)}`, 3600, 3);
     if (!ipOk) {
       return error(req, 429, "rate_limited", "Too many requests. Wait a few minutes and try again.");

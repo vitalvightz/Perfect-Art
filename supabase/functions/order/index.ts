@@ -4,7 +4,7 @@
 
 import { clientIp, error, guard, json, readJson, UUID_RE } from "../_shared/http.ts";
 import { clientKey, sha256Hex, signTicket } from "../_shared/crypto.ts";
-import { allow, rpc } from "../_shared/db.ts";
+import { allowClient, rpc } from "../_shared/db.ts";
 
 type Order = {
   id: string;
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!(await allow(`order:${await clientKey(clientIp(req))}`, 60, 30))) {
+    if (!(await allowClient("order", await clientKey(clientIp(req)), [60, 30], [60, 1200]))) {
       return error(req, 429, "rate_limited", "Too many requests. Wait a minute and try again.");
     }
 

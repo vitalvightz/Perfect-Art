@@ -4,7 +4,7 @@
 
 import { clientIp, error, guard, json, readJson, requireEnv, UUID_RE } from "../_shared/http.ts";
 import { clientKey, orderLinkToken, sha256Hex } from "../_shared/crypto.ts";
-import { allow, rpc, RpcError } from "../_shared/db.ts";
+import { allowClient, rpc, RpcError } from "../_shared/db.ts";
 import { activeProvider } from "../_shared/payments/registry.ts";
 
 const HOLD_MINUTES = 35;
@@ -44,7 +44,8 @@ Deno.serve(async (req) => {
 
   try {
     const ipKey = await clientKey(clientIp(req));
-    if (!(await allow(`checkout:${ipKey}`, 600, 10))) {
+    // Global ceiling: 300 checkouts a minute is far beyond a sell-out rush for a club night.
+    if (!(await allowClient("checkout", ipKey, [600, 10], [60, 300]))) {
       return error(req, 429, "rate_limited", "Too many checkout attempts. Wait a few minutes and try again.");
     }
 
@@ -98,11 +99,18 @@ Deno.serve(async (req) => {
       return error(req, 502, "payment_unavailable", "Payment is temporarily unavailable. Try again shortly.");
     }
 
-    await rpc("attach_checkout", {
+    // If the order can't be linked to its checkout, a payment for it would go to review instead
+    // of issuing tickets. Release the seats and don't hand out the payment link.
+    const attached = await rpc<boolean>("attach_checkout", {
       p_order_id: order.order_id,
       p_provider: provider.name,
       p_checkout_id: session.checkoutId,
-    });
+    }).catch(() => false);
+    if (!attached) {
+      await rpc("cancel_pending_order", { p_order_id: order.order_id }).catch(() => {});
+      console.error("could not attach checkout", provider.name);
+      return error(req, 502, "payment_unavailable", "Payment is temporarily unavailable. Try again shortly.");
+    }
 
     // The page keeps ticket_ref in this browser so it can show the tickets straight after payment.
     return json(req, { redirect_url: session.redirectUrl, ticket_ref: `${order.order_id}.${accessToken}` });

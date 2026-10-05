@@ -34,19 +34,20 @@ Payment provider          Email provider
 
 ## Security model
 
-- **The browser can't change anything that matters.** Visitors can only read published events and their ticket types (without capacity or allocation numbers). Every other table has row level security on and no browser access at all.
+- **The browser can't change anything that matters.** Visitors can only read published events and their ticket types (without capacity or allocation numbers). Signed-in staff can read their own `staff` row. Every other table has row level security on and no browser access at all, and nothing is writable from the browser.
 - **Privileged database functions run as the service role only.** `anon` and `authenticated` can't execute any of them. The service role key only exists inside Edge Functions.
 - **Prices come from the database.** The browser sends a ticket type and a quantity, never an amount. Money is stored as integer pence.
 - **Only the payment provider can mark an order paid.** That happens in `payment-webhook` after the provider's signature is verified. Reaching the success page proves nothing.
 - **Payment notifications are idempotent.** Each provider event id is stored with a unique key, and processing happens in the same transaction, so a notification that arrives twice issues tickets once.
 - **The amount paid is checked** against the order before tickets are issued. Mismatches go to `review` with no tickets.
-- **No overselling.** Checkout holds seats for 35 minutes while locking the event row, so two buyers can't both take the last seats. The provider's checkout closes at 30 minutes. A payment that arrives after its hold expired is only honoured if seats are still free; otherwise the order goes to `review` for a refund.
+- **No overselling.** Checkout holds seats for 35 minutes while locking the event row, so two buyers can't both take the last seats. The provider's checkout closes at 30 minutes. Payment confirmation takes the same lock and checks the hold against the wall clock, so a payment landing just as its hold expires can't race a new buyer for the same seat. A payment that arrives after its hold expired is only honoured if seats are still free; otherwise the order goes to `review` for a refund.
+- **Out-of-order notifications.** A refund that arrives before its payment notification isn't marked processed; the webhook asks the provider to retry, and it's applied once the payment has landed.
 - **QR codes are signed** (`PA1.<ticket id>.<HMAC>`) with `TICKET_SIGNING_SECRET`, so they can't be guessed or forged, and can be shown again at any time.
 - **Check-in is atomic.** Two scanners on the same ticket at the same moment: one gets "valid", the other "already used". Every scan attempt is logged.
 - **Buyer ticket links** (`tickets.html#<order id>.<secret>`) carry a 256-bit secret derived from the order id with `TICKET_SIGNING_SECRET`. Only its SHA-256 is stored. The secret is **never sent to the payment provider**: the provider's success URL is `tickets.html?order=<order id>`, which unlocks nothing. The secret reaches the buyer two ways: in the checkout response (kept in their browser so the tickets show straight after paying) and in the tickets email. As a URL fragment, browsers don't send it to any server when the page loads.
 - **Tickets are emailed** through an outbox. `confirm_payment` queues the email in the same transaction that issues the tickets, so a paid order can't end up without one. It's sent straight away, and anything that fails is retried by `send-emails` (every 2 minutes from `pg_cron`, after 2, 4, 8, 16 and 32 minutes, then marked failed). Parallel senders can't send the same email twice.
 - **"Find my tickets"** re-sends tickets to the address used at checkout. It gives the same reply whether or not the address has tickets, and is rate limited per IP and per address.
-- **Rate limits** on events, checkout, order lookups and check-in, stored in the database. Raw IPs are never stored, only a keyed hash.
+- **Rate limits** on every public endpoint, stored in the database: per client (by IP, preferring Cloudflare's `cf-connecting-ip`) and a global ceiling per endpoint that still holds if someone fakes a new IP on every request. Raw IPs are never stored, only a keyed hash. Request bodies are capped at 4 KB while being read.
 - **CORS** only allows the origins in `ALLOWED_ORIGINS`. Pages ship a strict Content-Security-Policy.
 
 ## Setup still needed
@@ -82,7 +83,9 @@ Write an adapter in `supabase/functions/_shared/email/` that implements `EmailSe
 
 ### 4. Publish the first event
 
-In the Table Editor, open `events` and `ticket_types` and set the real capacity, prices (pence: £15.00 = `1500`), allocations, perks and sales window. Then set the event's `status` to `published`. It appears on the site straight away.
+In the Table Editor, open `events` and `ticket_types` and set the real capacity, prices (pence: £15.00 = `1500`), allocations and perks. **Set `sales_start` and `sales_end`** on each ticket type: if they're left empty, tickets go on sale the moment the event is published. Then set the event's `status` to `published`. It appears on the site within a minute.
+
+The site shows the first **two** ticket types of the next event (lowest `sort_order` first), matching its two ticket cards. A third type would need a third card in `index.html`.
 
 ### 5. Door staff
 

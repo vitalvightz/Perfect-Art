@@ -34,6 +34,7 @@ const ok = (c, m) => c ? console.log('ok - ' + m) : fail(m);
   ok(await t1.locator('.placeholder-badge').isHidden(), 'placeholder badge hidden once live');
   ok(await t2.locator('.price').textContent() === '£30.00', 'ticket 2 price');
   ok(await t2.locator('.reserve').isDisabled() && await t2.locator('.reserve').textContent() === 'Sold out', 'sold-out ticket disabled');
+  ok(await t2.locator('li').count() === 0 && await t2.locator('ul').isHidden(), 'no perks in the database: placeholder perks removed');
   for (let i = 0; i < 6; i++) await t1.locator('[data-step="1"]').click({ force: true });
   ok(await t1.locator('output').textContent() === '4', 'quantity capped at the max per order (4)');
 
@@ -112,6 +113,10 @@ const ok = (c, m) => c ? console.log('ok - ' + m) : fail(m);
 
   const p5 = await b.newPage(); await p5.goto(ROOT + '/tickets.html'); await p5.waitForTimeout(200);
   ok(await p5.isHidden('#status') && await p5.isVisible('#find'), 'plain tickets.html is the Find my tickets page');
+
+  const p6 = await b.newPage(); p6.on('pageerror', e => errors.push(e.message));
+  await p6.goto(ROOT + '/tickets.html#%E0%A4%A'); await p6.waitForTimeout(200);
+  ok((await p6.textContent('#status')).includes("isn't complete"), 'malformed link escape handled without a crash');
 
   const p3 = await b.newPage(); await p3.goto(ROOT + '/tickets.html#not-a-real-link');
   ok((await p3.textContent('#status')).includes("isn't complete") && await p3.isVisible('#find'), 'broken link handled, with recovery form');

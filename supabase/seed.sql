@@ -1,6 +1,7 @@
 -- First event, created as a DRAFT so it's invisible and can't be bought.
--- Before publishing, set the real capacity, prices (in pence: £15.00 = 1500), allocations and perks
--- in the Supabase Table Editor, then set events.status to 'published'.
+-- Before publishing, set the real capacity, prices (in pence: £15.00 = 1500), allocations, perks
+-- and each ticket type's sales_start / sales_end in the Supabase Table Editor, then set
+-- events.status to 'published'. With no sales window, tickets go on sale as soon as it's published.
 -- Times are stored in UTC: 22:00 in London on 17 Oct 2026 (BST) is 21:00 UTC.
 with ev as (
   insert into public.events (name, kind, venue, address, doors_at, ends_at, capacity, min_age, status)

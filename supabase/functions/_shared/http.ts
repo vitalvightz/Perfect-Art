@@ -49,9 +49,25 @@ export function guard(req: Request, methods: string[]): Response | null {
   return null;
 }
 
+/** Reads a small JSON object body, giving up as soon as it passes maxBytes (counted in bytes). */
 export async function readJson(req: Request, maxBytes = 4096): Promise<Record<string, unknown> | null> {
-  const text = await req.text();
-  if (text.length > maxBytes) return null;
+  if (Number(req.headers.get("content-length") ?? 0) > maxBytes) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return null;
+  const decoder = new TextDecoder();
+  let text = "";
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
   try {
     const value = JSON.parse(text);
     return value && typeof value === "object" && !Array.isArray(value) ? value : null;
@@ -60,9 +76,14 @@ export async function readJson(req: Request, maxBytes = 4096): Promise<Record<st
   }
 }
 
+/**
+ * Best-effort client IP for per-IP rate limits. cf-connecting-ip is set by Cloudflare, which
+ * overwrites any value the client sends. The fallbacks may be client-controlled, which is why every
+ * public endpoint also has a global limit that can't be dodged by faking addresses.
+ */
 export function clientIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for");
-  return (fwd?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "unknown").trim();
+  return (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-real-ip") ?? fwd?.split(",")[0] ?? "unknown").trim();
 }
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

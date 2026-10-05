@@ -73,6 +73,11 @@ Deno.serve(async (req) => {
         return reply(200, { received: true });
     }
 
+    if (notice.kind === "refunded" && result.outcome === "order_not_found") {
+      // Probably arrived before its payment notification. Ask the provider to retry later.
+      console.warn("refund for unknown payment, asking provider to retry", { provider: provider.name });
+      return reply(503, { error: "retry_later" });
+    }
     if (result.outcome === "fulfilled" || result.outcome === "fulfilled_late") {
       // Send the tickets email now. If this fails, the queued email is retried by send-emails.
       await processOutbox(5).catch((e) => console.error("immediate email send failed", e instanceof Error ? e.message : e));

@@ -180,6 +180,22 @@ select pg_temp.ok((select count(*) from public.checkin_attempts) = 6, 'every sca
 select pg_temp.ok((public.refund_order('testpay', 'evt_r2', 'refund', 'pay_1', true))->>'outcome' = 'refunded', 'refund of partly used order');
 select pg_temp.ok((select status from public.tickets where id = :'t1') = 'used', 'a used ticket stays used after refund');
 
+-- ---------------------------------------------------------------- out-of-order refund
+reset role;
+insert into public.events (id, name, kind, venue, address, doors_at, ends_at, capacity, status) values
+  ('10000000-0000-0000-0000-000000000003', 'Refund Night', 'bar', 'v', 'a', now() + interval '5 days', now() + interval '5 days 6 hours', 10, 'published');
+insert into public.ticket_types (id, event_id, name, price_pence, allocation) values
+  ('20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000003', 'GA', 1000, 10);
+set role service_role;
+select pg_temp.ok((public.refund_order('testpay', 'evt_rf_early', 'refund', 'pay_rf', true))->>'outcome' = 'order_not_found', 'refund arriving before its payment is not matched yet');
+select pg_temp.ok((select count(*) from public.payment_events where provider_event_id = 'evt_rf_early') = 0, 'unmatched refund is not marked processed, so the provider retries it');
+select (public.reserve_tickets(gen_random_uuid(), '20000000-0000-0000-0000-000000000004', 2, repeat('6', 64), null))->>'order_id' as o6 \gset
+select public.attach_checkout(:'o6', 'testpay', 'chk_6') \gset ignored_
+select pg_temp.ok((public.confirm_payment('testpay', 'evt_6', 'paid', :'o6', 'pay_rf', 2000, 'gbp', 'r@example.com'))->>'outcome' = 'fulfilled', 'the payment then lands');
+select pg_temp.ok((public.refund_order('testpay', 'evt_rf_early', 'refund', 'pay_rf', true))->>'outcome' = 'refunded', 'the retried refund is applied');
+select pg_temp.ok((select count(*) from public.tickets where order_id = :'o6' and status = 'cancelled') = 2, 'its tickets are cancelled');
+reset role;
+
 -- ---------------------------------------------------------------- rate limiting
 select pg_temp.ok(public.hit_rate_limit('t:a', 60, 3) and public.hit_rate_limit('t:a', 60, 3) and public.hit_rate_limit('t:a', 60, 3), 'first three calls allowed');
 select pg_temp.ok(not public.hit_rate_limit('t:a', 60, 3), 'fourth call blocked');

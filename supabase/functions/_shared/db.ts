@@ -23,3 +23,20 @@ export async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Pr
 export function allow(key: string, windowSeconds: number, max: number): Promise<boolean> {
   return rpc<boolean>("hit_rate_limit", { p_key: key, p_window_seconds: windowSeconds, p_max: max });
 }
+
+/**
+ * Per-client limit plus a global ceiling for the endpoint. The global ceiling still holds if a
+ * caller fakes a new IP on every request. Both are counted on every call.
+ */
+export async function allowClient(
+  endpoint: string,
+  clientKey: string,
+  perClient: [windowSeconds: number, max: number],
+  global: [windowSeconds: number, max: number],
+): Promise<boolean> {
+  const [clientOk, globalOk] = await Promise.all([
+    allow(`${endpoint}:${clientKey}`, perClient[0], perClient[1]),
+    allow(`${endpoint}:global`, global[0], global[1]),
+  ]);
+  return clientOk && globalOk;
+}

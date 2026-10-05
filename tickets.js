@@ -7,7 +7,8 @@
   //  * the emailed link: tickets.html#<order id>.<secret> (the fragment never reaches any server)
   //  * straight after payment: tickets.html?order=<order id>, with the secret saved in this browser
   //    at checkout. The payment provider only ever sees the order id.
-  let ref = decodeURIComponent(location.hash.slice(1));
+  let ref = "";
+  try { ref = decodeURIComponent(location.hash.slice(1)); } catch { ref = location.hash.slice(1); }
   const returningOrder = new URLSearchParams(location.search).get("order");
   if (!REF_RE.test(ref) && returningOrder) {
     try { ref = localStorage.getItem(`pa-ticket:${returningOrder}`) || ""; } catch { ref = ""; }

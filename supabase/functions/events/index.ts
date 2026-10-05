@@ -3,14 +3,14 @@
 
 import { clientIp, error, guard, json } from "../_shared/http.ts";
 import { clientKey } from "../_shared/crypto.ts";
-import { allow, rpc } from "../_shared/db.ts";
+import { allowClient, rpc } from "../_shared/db.ts";
 
 Deno.serve(async (req) => {
   const blocked = guard(req, ["GET"]);
   if (blocked) return blocked;
 
   try {
-    if (!(await allow(`events:${await clientKey(clientIp(req))}`, 60, 120))) {
+    if (!(await allowClient("events", await clientKey(clientIp(req)), [60, 120], [60, 6000]))) {
       return error(req, 429, "rate_limited", "Too many requests. Wait a minute and try again.");
     }
     const events = await rpc<unknown[]>("public_event_listing");

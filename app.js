@@ -67,6 +67,7 @@
     if (!API || !card.ticketTypeId) { say("Ticket sales open soon."); return; }
     if (!card.onSale) return;
     const label = button.textContent;
+    button.dataset.busy = "1";
     button.disabled = true; button.textContent = "Reserving…";
     try {
       const res = await fetch(`${API}/checkout`, {
@@ -87,6 +88,7 @@
     } catch {
       say("Couldn't reach the ticket service. Check your connection and try again.");
     }
+    delete button.dataset.busy;
     button.disabled = false; button.textContent = label;
   }
 
@@ -116,22 +118,29 @@
       $(".placeholder-badge", el).hidden = true;
       $("h3", el).textContent = tt.name;
       $(".price", el).textContent = money(tt.price_pence, tt.currency);
-      if (tt.perks.length) {
-        const list = $("ul", el);
-        list.replaceChildren(...tt.perks.map(p => Object.assign(document.createElement("li"), { textContent: p })));
-      }
+      // Always replace the placeholder perks, even with nothing.
+      const list = $("ul", el);
+      list.replaceChildren(...tt.perks.map(p => Object.assign(document.createElement("li"), { textContent: p })));
+      list.hidden = tt.perks.length === 0;
       const reserve = $(".reserve", el);
+      if (reserve.dataset.busy) return; // a checkout is starting; leave the button alone
       reserve.disabled = !card.onSale;
       reserve.textContent = card.onSale ? "Reserve" : (SALE_LABELS[tt.sale_state] || "Unavailable");
     });
   }
 
-  if (API) {
+  // Load the catalogue, and refresh it every minute while the page is visible so a sales window
+  // opening (or a ticket selling out) shows without a reload.
+  function loadEvents() {
+    if (!API) return;
     fetch(`${API}/events`)
       .then(r => (r.ok ? r.json() : null))
       .then(data => { if (data?.events?.length) showEvent(data.events[0]); })
-      .catch(() => { /* keep the placeholder content */ });
+      .catch(() => { /* keep what's on screen */ });
   }
+  loadEvents();
+  setInterval(() => { if (document.visibilityState === "visible") loadEvents(); }, 60_000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadEvents(); });
 
   // Mailing list
   $("#signup").addEventListener("submit", e => {
