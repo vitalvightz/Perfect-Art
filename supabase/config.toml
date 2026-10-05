@@ -1,0 +1,31 @@
+# Supabase CLI settings for the Perfect Art project ("Perf Behind the Curtains").
+project_id = "bsxlhszipbrlisiyuwxh"
+
+# Every function does its own authorisation, so the gateway's JWT check is off:
+#   events, checkout   public, rate limited per IP
+#   order              needs the secret from the buyer's private ticket link
+#   payment-webhook    needs a valid payment provider signature
+#   check-in           verifies the staff member's session with auth.getUser() and the staff table
+#   resend-tickets     public, rate limited per IP and per address, reveals nothing
+#   send-emails        needs the EMAIL_CRON_SECRET header (called by pg_cron)
+# (The gateway check would also block CORS preflight requests from the door page.)
+[functions.events]
+verify_jwt = false
+
+[functions.checkout]
+verify_jwt = false
+
+[functions.order]
+verify_jwt = false
+
+[functions.payment-webhook]
+verify_jwt = false
+
+[functions.check-in]
+verify_jwt = false
+
+[functions.resend-tickets]
+verify_jwt = false
+
+[functions.send-emails]
+verify_jwt = false
